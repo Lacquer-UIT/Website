@@ -1,18 +1,19 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Eye, EyeOff, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, Copy, ShieldCheck } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ReCaptchaV3 } from "@/components/ui/recaptcha-v3"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 
@@ -20,6 +21,7 @@ import { useTheme } from "next-themes"
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+  recaptchaToken: z.string({ required_error: "ReCAPTCHA verification failed" }),
 })
 
 type LoginFormValues = z.infer<typeof loginSchema>
@@ -28,10 +30,25 @@ export default function LoginPage() {
   const { login, error: authError, clearError, isLoading } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [recaptchaError, setRecaptchaError] = useState<string | null>(null)
+  const [recaptchaVerified, setRecaptchaVerified] = useState(false)
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { theme } = useTheme()
-  const isDark = theme === "dark"
+  const { theme, resolvedTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  
+  // After hydration, we can safely show the UI that depends on the theme
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  
+  // Use a safe default for server-side rendering
+  // Only use theme detection on client after mounting
+  const isDark = mounted && (resolvedTheme === "dark" || theme === "dark")
+
+  // Get reCAPTCHA site key from environment variable
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ""
 
   // Get redirect path from URL if present
   const redirectPath = searchParams.get("redirect") || "/"
@@ -50,17 +67,83 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       password: "",
+      recaptchaToken: "",
     },
   })
 
   // Handle form submission
   const onSubmit = async (values: LoginFormValues) => {
     setUrlError(null)
-    const success = await login(values)
-    if (success) {
-      router.push(redirectPath)
+    setRecaptchaError(null)
+    
+    // Get a fresh token right before submission
+    if (window.grecaptcha) {
+      try {
+        window.grecaptcha.ready(async () => {
+          try {
+            const freshToken = await window.grecaptcha.execute(recaptchaSiteKey, { action: 'login' })
+            const updatedValues = { ...values, recaptchaToken: freshToken }
+            
+            const success = await login(updatedValues)
+            if (success) {
+              router.push(redirectPath)
+            }
+          } catch (err) {
+            setRecaptchaError("ReCAPTCHA verification failed")
+            console.error("ReCAPTCHA error:", err)
+          }
+        })
+      } catch (err) {
+        setRecaptchaError("ReCAPTCHA is not available")
+        console.error("ReCAPTCHA ready error:", err)
+      }
+    } else {
+      // Fallback if grecaptcha is not loaded
+      const success = await login(values)
+      if (success) {
+        router.push(redirectPath)
+      }
     }
   }
+
+  // Handle captcha verification
+  const handleCaptchaVerify = (token: string) => {
+    form.setValue("recaptchaToken", token)
+    setRecaptchaVerified(true)
+    setRecaptchaError(null)
+  }
+
+  // Use a consistent theme for server-side rendering
+  // We'll use a simple style for the initial render
+  const initialCardStyle = "rounded-2xl p-8 backdrop-blur-md shadow-md bg-white/60 border border-gray-200/50"
+  
+  // Apply theme-based styles only after client-side hydration
+  const cardStyle = mounted 
+    ? cn(
+        "rounded-2xl p-8 backdrop-blur-md shadow-md",
+        isDark ? "bg-white/5 border border-white/10" : "bg-white/60 border border-gray-200/50",
+      )
+    : initialCardStyle
+
+  const textStyle = mounted
+    ? cn("text-sm", isDark ? "text-white/70" : "text-gray-600")
+    : "text-sm text-gray-600"
+    
+  const inputStyle = mounted
+    ? cn(
+        isDark
+          ? "bg-white/10 border-white/20 focus-visible:ring-lacquer-red/50 text-white placeholder:text-white/60"
+          : "bg-white/60 border-gray-200/50 focus-visible:ring-lacquer-red/30 text-gray-800 placeholder:text-gray-600/60",
+      )
+    : "bg-white/60 border-gray-200/50 focus-visible:ring-lacquer-red/30 text-gray-800 placeholder:text-gray-600/60"
+    
+  const iconStyle = mounted
+    ? cn("h-4 w-4", isDark ? "text-white/60" : "text-gray-500")
+    : "h-4 w-4 text-gray-500"
+    
+  const linkStyle = mounted
+    ? cn("p-0", isDark ? "text-white" : "text-lacquer-red")
+    : "p-0 text-lacquer-red"
 
   return (
     <>
@@ -77,15 +160,10 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="max-w-md mx-auto"
         >
-          <div
-            className={cn(
-              "rounded-2xl p-8 backdrop-blur-md shadow-md",
-              isDark ? "bg-white/5 border border-white/10" : "bg-white/60 border border-gray-200/50",
-            )}
-          >
+          <div className={cardStyle}>
             <div className="text-center mb-6">
               <h1 className="text-3xl font-heading font-bold mb-2">Welcome Back</h1>
-              <p className={cn("text-sm", isDark ? "text-white/70" : "text-gray-600")}>
+              <p className={textStyle}>
                 Sign in to access your LacQuer account
               </p>
             </div>
@@ -95,7 +173,7 @@ export default function LoginPage() {
                 variant="destructive"
                 className={cn(
                   "mb-6",
-                  isDark ? "bg-red-900/20 text-red-300 border-red-900/50" : "bg-red-50 text-red-800 border-red-200",
+                  mounted && (isDark ? "bg-red-900/20 text-red-300 border-red-900/50" : "bg-red-50 text-red-800 border-red-200"),
                 )}
               >
                 <AlertCircle className="h-4 w-4" />
@@ -115,11 +193,7 @@ export default function LoginPage() {
                         <Input
                           placeholder="your.email@example.com"
                           {...field}
-                          className={cn(
-                            isDark
-                              ? "bg-white/10 border-white/20 focus-visible:ring-lacquer-red/50 text-white placeholder:text-white/60"
-                              : "bg-white/60 border-gray-200/50 focus-visible:ring-lacquer-red/30 text-gray-800 placeholder:text-gray-600/60",
-                          )}
+                          className={inputStyle}
                         />
                       </FormControl>
                       <FormMessage />
@@ -139,12 +213,7 @@ export default function LoginPage() {
                             type={showPassword ? "text" : "password"}
                             placeholder="••••••••"
                             {...field}
-                            className={cn(
-                              "pr-10",
-                              isDark
-                                ? "bg-white/10 border-white/20 focus-visible:ring-lacquer-red/50 text-white placeholder:text-white/60"
-                                : "bg-white/60 border-gray-200/50 focus-visible:ring-lacquer-red/30 text-gray-800 placeholder:text-gray-600/60",
-                            )}
+                            className={cn("pr-10", inputStyle)}
                           />
                           <button
                             type="button"
@@ -154,12 +223,12 @@ export default function LoginPage() {
                           >
                             {showPassword ? (
                               <EyeOff
-                                className={cn("h-4 w-4", isDark ? "text-white/60" : "text-gray-500")}
+                                className={iconStyle}
                                 aria-hidden="true"
                               />
                             ) : (
                               <Eye
-                                className={cn("h-4 w-4", isDark ? "text-white/60" : "text-gray-500")}
+                                className={iconStyle}
                                 aria-hidden="true"
                               />
                             )}
@@ -172,18 +241,47 @@ export default function LoginPage() {
                   )}
                 />
 
-                <Button type="submit" className="w-full bg-lacquer-red hover:bg-lacquer-red/90" disabled={isLoading}>
+                {/* Invisible reCAPTCHA v3 */}
+                <div ref={recaptchaContainerRef} className="hidden">
+                  <ReCaptchaV3
+                    siteKey={recaptchaSiteKey}
+                    onVerify={handleCaptchaVerify}
+                    action="login"
+                  />
+                </div>
+
+                {recaptchaVerified && (
+                  <div className={cn(
+                    "flex items-center gap-2 py-2 px-3 rounded-md text-sm",
+                    mounted && (isDark ? "bg-green-900/20 text-green-300" : "bg-green-50 text-green-800")
+                  )}>
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>reCAPTCHA verification successful</span>
+                  </div>
+                )}
+
+                {recaptchaError && (
+                  <div className={cn(
+                    "flex items-center gap-2 py-2 px-3 rounded-md text-sm",
+                    mounted && (isDark ? "bg-red-900/20 text-red-300" : "bg-red-50 text-red-800")
+                  )}>
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{recaptchaError}</span>
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full bg-lacquer-red hover:bg-lacquer-red/90" disabled={isLoading || !recaptchaVerified}>
                   {isLoading ? "Signing in..." : "Sign In"}
                 </Button>
               </form>
             </Form>
 
             <div className="mt-6 text-center">
-              <p className={cn("text-sm", isDark ? "text-white/70" : "text-gray-600")}>
+              <p className={textStyle}>
                 Don't have an account?{" "}
                 <Button
                   variant="link"
-                  className={cn("p-0", isDark ? "text-white" : "text-lacquer-red")}
+                  className={linkStyle}
                   onClick={() => router.push("/signup")}
                 >
                   Sign up

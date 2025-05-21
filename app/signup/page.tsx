@@ -1,18 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ReCaptchaV3 } from "@/components/ui/recaptcha-v3"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 
@@ -23,6 +24,7 @@ const signupSchema = z
     email: z.string().email({ message: "Please enter a valid email address" }),
     password: z.string().min(8, { message: "Password must be at least 8 characters" }),
     confirmPassword: z.string(),
+    recaptchaToken: z.string({ required_error: "ReCAPTCHA verification failed" }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -36,10 +38,16 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [recaptchaError, setRecaptchaError] = useState<string | null>(null)
+  const [recaptchaVerified, setRecaptchaVerified] = useState(false)
+  const recaptchaContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { theme } = useTheme()
   const isDark = theme === "dark"
+
+  // Get reCAPTCHA site key from environment variable
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ""
 
   // Get redirect path from URL if present
   const redirectPath = searchParams.get("redirect") || "/"
@@ -52,6 +60,7 @@ export default function SignupPage() {
       email: "",
       password: "",
       confirmPassword: "",
+      recaptchaToken: "",
     },
   })
 
@@ -59,19 +68,59 @@ export default function SignupPage() {
   const onSubmit = async (values: SignupFormValues) => {
     clearError()
     setSuccessMessage(null)
+    setRecaptchaError(null)
 
-    const { confirmPassword, ...signupData } = values
-    const result = await signup(signupData)
-
-    if (result.success) {
-      setSuccessMessage(result.message)
-      form.reset()
+    // Get a fresh token right before submission
+    if (window.grecaptcha) {
+      try {
+        window.grecaptcha.ready(async () => {
+          try {
+            const freshToken = await window.grecaptcha.execute(recaptchaSiteKey, { action: 'signup' })
+            const { confirmPassword, ...signupData } = values
+            const updatedSignupData = { ...signupData, recaptchaToken: freshToken }
+            
+            const result = await signup(updatedSignupData)
+            if (result.success) {
+              setSuccessMessage(result.message)
+              form.reset()
+              // Refresh captcha
+              if (window.grecaptcha) {
+                window.grecaptcha.ready(async () => {
+                  const newToken = await window.grecaptcha.execute(recaptchaSiteKey, { action: 'signup' })
+                  form.setValue("recaptchaToken", newToken)
+                })
+              }
+            }
+          } catch (err) {
+            setRecaptchaError("ReCAPTCHA verification failed")
+            console.error("ReCAPTCHA error:", err)
+          }
+        })
+      } catch (err) {
+        setRecaptchaError("ReCAPTCHA is not available")
+        console.error("ReCAPTCHA ready error:", err)
+      }
+    } else {
+      // Fallback if grecaptcha is not loaded
+      const { confirmPassword, ...signupData } = values
+      const result = await signup(signupData)
+      if (result.success) {
+        setSuccessMessage(result.message)
+        form.reset()
+      }
     }
   }
 
   // Handle resend verification
   const handleResendVerification = () => {
     router.push("/resend-verification")
+  }
+
+  // Handle captcha verification
+  const handleCaptchaVerify = (token: string) => {
+    form.setValue("recaptchaToken", token)
+    setRecaptchaVerified(true)
+    setRecaptchaError(null)
   }
 
   return (
@@ -266,7 +315,36 @@ export default function SignupPage() {
                   )}
                 />
 
-                <Button type="submit" className="w-full bg-lacquer-red hover:bg-lacquer-red/90" disabled={isLoading}>
+                {/* Invisible reCAPTCHA v3 */}
+                <div ref={recaptchaContainerRef} className="hidden">
+                  <ReCaptchaV3
+                    siteKey={recaptchaSiteKey}
+                    onVerify={handleCaptchaVerify}
+                    action="signup"
+                  />
+                </div>
+
+                {recaptchaVerified && (
+                  <div className={cn(
+                    "flex items-center gap-2 py-2 px-3 rounded-md text-sm",
+                    isDark ? "bg-green-900/20 text-green-300" : "bg-green-50 text-green-800"
+                  )}>
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>reCAPTCHA verification successful</span>
+                  </div>
+                )}
+
+                {recaptchaError && (
+                  <div className={cn(
+                    "flex items-center gap-2 py-2 px-3 rounded-md text-sm",
+                    isDark ? "bg-red-900/20 text-red-300" : "bg-red-50 text-red-800"
+                  )}>
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{recaptchaError}</span>
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full bg-lacquer-red hover:bg-lacquer-red/90" disabled={isLoading || !recaptchaVerified}>
                   {isLoading ? "Creating Account..." : "Sign Up"}
                 </Button>
               </form>

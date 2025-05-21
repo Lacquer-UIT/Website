@@ -23,16 +23,19 @@ export interface Tag {
 export interface LoginRequest {
   email: string
   password: string
+  recaptchaToken: string
 }
 
 export interface SignupRequest {
   username: string
   email: string
   password: string
+  recaptchaToken: string
 }
 
 export interface ResendVerificationRequest {
   email: string
+  recaptchaToken: string
 }
 
 export interface UpdateProfileRequest {
