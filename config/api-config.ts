@@ -7,5 +7,10 @@ export const API_CONFIG = {
     RESEND_VERIFICATION: "/auth/resend",
     PROFILE: "/auth/profile",
     TAGS: "/tag",
+    DICTIONARY_SEARCH_EN: "/search/en",
+    DICTIONARY_SEARCH_VN: "/search/vn",
+    RANDOM_WORD_EN: "/random/en",
+    RANDOM_WORD_VN: "/random/vn",
+    CHATBOT: "/chatbot",
   },
 }

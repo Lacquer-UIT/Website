@@ -73,3 +73,56 @@ export interface AuthState {
   isLoading: boolean
   error: string | null
 }
+
+// Dictionary types
+export interface EnglishWordType {
+  _id: string
+  type: string
+  definitions: string[]
+  examples: string[]
+}
+
+export interface EnglishWordResponse {
+  img: string[]
+  _id: string
+  word: string
+  pronunciation: string
+  wordTypes: EnglishWordType[]
+  difficulty: string
+  examples: string[]
+}
+
+export interface VietnameseExample {
+  _id: string
+  phrase: string
+  translation: string
+}
+
+export interface VietnameseDefinition {
+  _id: string
+  text: string
+  examples: VietnameseExample[]
+}
+
+export interface VietnameseMeaning {
+  part_of_speech: {
+    type: string
+  }
+  _id: string
+  definitions: VietnameseDefinition[]
+}
+
+export interface VietnameseWordResponse {
+  _id: string
+  word: string
+  pronunciations: string[]
+  img: string[]
+  meanings: VietnameseMeaning[]
+  difficulty_level: string
+}
+
+export interface SearchSuggestionsResponse {
+  success: boolean
+  message: string
+  data: string[]
+}
