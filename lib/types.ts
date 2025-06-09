@@ -126,3 +126,24 @@ export interface SearchSuggestionsResponse {
   message: string
   data: string[]
 }
+
+// Badge types
+export interface Badge {
+  _id: string
+  name: string
+  iconUrl: string
+  createdAt: string
+  updatedAt: string
+  __v?: number
+}
+
+export interface BadgeRequest {
+  name: string
+  icon?: File
+}
+
+export interface BadgesResponse {
+  success: boolean
+  message: string
+  data: Badge[]
+}

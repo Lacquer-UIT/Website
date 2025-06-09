@@ -6,6 +6,10 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useState } from "react"
+import { useAuth } from "@/contexts/auth-context"
+import { Captcha } from "./captcha"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const formSchema = z.object({
   email: z.string().email({
@@ -23,6 +27,10 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ onForgotPassword, onSignUp }: LoginFormProps) {
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const { login, isLoading, error, clearError } = useAuth()
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -32,9 +40,29 @@ export function LoginForm({ onForgotPassword, onSignUp }: LoginFormProps) {
     },
   })
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log(values)
-    // In a real app, you would handle authentication here
+  const handleCaptchaVerify = (token: string) => {
+    setIsCaptchaVerified(true)
+    setCaptchaToken(token)
+  }
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!isCaptchaVerified) {
+      return
+    }
+
+    clearError()
+    
+    const success = await login({
+      email: values.email,
+      password: values.password,
+      recaptchaToken: captchaToken,
+    })
+
+    if (success) {
+      // Login successful, user will be redirected by auth context
+      console.log("Login successful")
+    }
+    // If login fails, error will be shown via the auth context error state
   }
 
   function handleGoogleSignIn() {
@@ -48,6 +76,12 @@ export function LoginForm({ onForgotPassword, onSignUp }: LoginFormProps) {
         <h1 className="text-3xl font-bold font-heading tracking-tight">Welcome back</h1>
         <p className="text-muted-foreground">Enter your credentials to access your account</p>
       </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -103,8 +137,15 @@ export function LoginForm({ onForgotPassword, onSignUp }: LoginFormProps) {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full bg-lacquer-red hover:bg-lacquer-red/90">
-            Sign in
+          
+          <Captcha onVerify={handleCaptchaVerify} />
+          
+          <Button 
+            type="submit" 
+            className="w-full bg-lacquer-red hover:bg-lacquer-red/90"
+            disabled={!isCaptchaVerified || isLoading}
+          >
+            {isLoading ? "Signing in..." : "Sign in"}
           </Button>
         </form>
       </Form>
