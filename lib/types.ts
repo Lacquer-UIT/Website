@@ -147,3 +147,48 @@ export interface BadgesResponse {
   message: string
   data: Badge[]
 }
+
+// Deck types
+export interface DeckCard {
+  _id: string
+  word: string
+  pronunciation: string
+  meaning?: {
+    type: string
+    definition: string
+  } | null
+}
+
+export interface Deck {
+  _id: string
+  owner?: string | null
+  title: string
+  description?: string
+  img?: string
+  isDone: boolean
+  tags: Tag[]
+  cards: DeckCard[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DeckFormData {
+  title: string
+  description?: string
+  img?: string
+  tags?: string[]
+  cards?: string[]
+}
+
+export interface DecksResponse {
+  count: number
+  data: Deck[]
+}
+
+export interface DecksByTagResponse {
+  count: number
+  data: {
+    tag: Tag
+    decks: Deck[]
+  }[]
+}

@@ -13,5 +13,6 @@ export const API_CONFIG = {
     RANDOM_WORD_VN: "/random/vn",
     CHATBOT: "/chatbot",
     BADGES: "/badge",
+    DECKS: "/deck",
   },
 }
